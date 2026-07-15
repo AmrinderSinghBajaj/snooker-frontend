@@ -67,11 +67,6 @@ export default function Billing() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 15;
-
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab, searchQuery]);
   const [detailSession, setDetailSession] = useState(null);
   const [detail, setDetail] = useState(null);
   const [unpaidSession, setUnpaidSession] = useState(null);
@@ -86,6 +81,11 @@ export default function Billing() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentMethodPrompt, setPaymentMethodPrompt] = useState(null);
   const [outstandingDetailPlayer, setOutstandingDetailPlayer] = useState(null);
+  const PAGE_SIZE = 15;
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery]);
 
   const load = () => {
     setLoading(true);
