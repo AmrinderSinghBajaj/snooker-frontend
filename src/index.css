@@ -463,18 +463,4 @@ table {
   }
 }
 
-/* Drag & Drop Reordering indicator and cursors */
-.table-card {
-  cursor: grab;
-  user-select: none;
-}
-.table-card:active {
-  cursor: grabbing;
-}
-.table-card.is-dragging {
-  opacity: 0.4 !important;
-  transform: scale(0.96) !important;
-  border: 1.5px dashed var(--brass-300) !important;
-  box-shadow: none !important;
-  transition: none !important;
-}
+

@@ -58,7 +58,6 @@ export default function Dashboard() {
   const [checkoutSession, setCheckoutSession] = useState(null);
   const [editPlayersSession, setEditPlayersSession] = useState(null);
   const [error, setError] = useState('');
-  const [draggedIdx, setDraggedIdx] = useState(null);
   const navigate = useNavigate();
 
   const loadAll = useCallback(async (silent = false) => {
@@ -70,27 +69,7 @@ export default function Dashboard() {
       ]);
       cachedAssets = assetsRes.data;
       cachedActiveSessions = sessionsRes.data;
-
-      // Sort assets based on custom order in localStorage
-      const savedOrder = localStorage.getItem('dashboard_asset_order');
-      let sortedAssets = assetsRes.data;
-      if (savedOrder) {
-        try {
-          const orderedIds = JSON.parse(savedOrder);
-          sortedAssets = [...assetsRes.data].sort((a, b) => {
-            const idxA = orderedIds.indexOf(a.id || a._id);
-            const idxB = orderedIds.indexOf(b.id || b._id);
-            if (idxA === -1 && idxB === -1) return 0;
-            if (idxA === -1) return 1;
-            if (idxB === -1) return -1;
-            return idxA - idxB;
-          });
-        } catch (e) {
-          console.error('Failed to parse asset order from localStorage:', e);
-        }
-      }
-
-      setAssets(sortedAssets);
+      setAssets(assetsRes.data);
       setActiveSessions(sessionsRes.data);
     } catch {
       setError('Could not load the dashboard.');
@@ -98,61 +77,6 @@ export default function Dashboard() {
       if (!silent) setLoading(false);
     }
   }, []);
-
-  const reorderAssets = (fromIndex, toIndex) => {
-    const updated = [...assets];
-    const [moved] = updated.splice(fromIndex, 1);
-    updated.splice(toIndex, 0, moved);
-    setAssets(updated);
-    saveOrder(updated);
-  };
-
-  const saveOrder = (currentAssets) => {
-    const orderedIds = (currentAssets || assets).map((a) => a.id || a._id);
-    localStorage.setItem('dashboard_asset_order', JSON.stringify(orderedIds));
-  };
-
-  // Mouse Drag Events
-  const handleDragStart = (e, index) => {
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggedIdx(index);
-  };
-
-  const handleDragOver = (e, index) => {
-    e.preventDefault();
-    if (draggedIdx !== null && draggedIdx !== index) {
-      reorderAssets(draggedIdx, index);
-      setDraggedIdx(index);
-    }
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIdx(null);
-  };
-
-  // Touch Drag Events (iOS/Android support)
-  const handleTouchStart = (e, index) => {
-    setDraggedIdx(index);
-  };
-
-  const handleTouchMove = (e, index) => {
-    const touch = e.touches[0];
-    const element = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (!element) return;
-
-    const cardElement = element.closest('.table-card');
-    if (cardElement) {
-      const overIndex = parseInt(cardElement.getAttribute('data-index'), 10);
-      if (!isNaN(overIndex) && overIndex !== index) {
-        reorderAssets(index, overIndex);
-        setDraggedIdx(overIndex);
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setDraggedIdx(null);
-  };
 
   useEffect(() => {
     const hasCache = cachedAssets !== null;
@@ -257,19 +181,11 @@ export default function Dashboard() {
             return (
               <div
                 key={asset.id}
-                className={`table-card${isActive ? ' active' : isPaused ? ' paused' : ''}${draggedIdx === idx ? ' is-dragging' : ''}`}
+                className={`table-card${isActive ? ' active' : isPaused ? ' paused' : ''}`}
                 style={{
                   ...styles.tableCard,
                   animationDelay: `${idx * 0.05}s`,
                 }}
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                onTouchStart={(e) => handleTouchStart(e, idx)}
-                onTouchMove={(e) => handleTouchMove(e, idx)}
-                onTouchEnd={handleTouchEnd}
-                data-index={idx}
               >
                 {/* 3D Model Viewport Area */}
                 <div className="category-image-wrap" style={styles.imageWrap}>
