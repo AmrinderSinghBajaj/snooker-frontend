@@ -334,10 +334,10 @@ export default function Customers() {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = {
   page: { position: 'relative', paddingBottom: 48 },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 16 },
   pageTitle: { fontFamily: 'var(--font-display)', fontSize: '2rem', color: 'var(--chalk-100)', margin: 0, letterSpacing: '-0.01em' },
   subtitle: { color: 'var(--chalk-400)', margin: '4px 0 0', fontSize: '0.92rem' },
-  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 28 },
+  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 28 },
   toolbar: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' },
   searchWrap: { position: 'relative', flex: 1, minWidth: 200, maxWidth: 340 },
   searchIcon: { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--chalk-400)', display: 'flex', alignItems: 'center' },
@@ -398,7 +398,7 @@ const styles = {
 
 const gridStyles = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
   gap: 20,
 };
 
@@ -427,7 +427,7 @@ const cardStyles = {
   revenueBlock: { display: 'flex', flexDirection: 'column', gap: 4 },
   revenueLabel: { fontSize: '0.68rem', fontWeight: 600, color: 'var(--chalk-400)', textTransform: 'uppercase', letterSpacing: '0.08em' },
   revenueValue: { fontFamily: 'var(--font-mono)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--brass-300)' },
-  metaRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 4 },
+  metaRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 12, marginTop: 4 },
   metaItem: { display: 'flex', flexDirection: 'column', gap: 4 },
   metaKey: { fontSize: '0.65rem', color: 'var(--chalk-400)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 },
   metaVal: { fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 700, color: 'var(--chalk-100)', whiteSpace: 'nowrap' },

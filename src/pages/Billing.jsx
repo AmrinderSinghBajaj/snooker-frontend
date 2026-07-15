@@ -927,6 +927,8 @@ const styles = {
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 22,
+    flexWrap: 'wrap',
+    gap: 16,
   },
   pageTitle: {
     fontFamily: 'var(--font-display)',
@@ -944,6 +946,7 @@ const styles = {
     gap: 2,
     marginBottom: 22,
     borderBottom: '1px solid var(--felt-600)',
+    flexWrap: 'wrap',
   },
   tabBtn: {
     padding: '12px 20px',
@@ -979,7 +982,7 @@ const styles = {
   plusIcon: { fontSize: '1.05rem', lineHeight: 1, fontWeight: 700 },
   statsRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: 14,
     marginBottom: 22,
   },
