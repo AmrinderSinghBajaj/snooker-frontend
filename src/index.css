@@ -463,4 +463,11 @@ table {
   }
 }
 
+/* Dashboard Grid limit to max 3 columns on wide screens */
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
 

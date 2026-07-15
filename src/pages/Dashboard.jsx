@@ -171,7 +171,7 @@ export default function Dashboard() {
         {error && <div style={styles.errorBanner}>{error}</div>}
 
         {/* Operational Grid */}
-        <div style={styles.grid}>
+        <div className="dashboard-grid" style={styles.grid}>
           {assets.map((asset, idx) => {
             const session = sessionForAsset(asset.id);
             const { accent } = getCategoryConfig(asset.category);
