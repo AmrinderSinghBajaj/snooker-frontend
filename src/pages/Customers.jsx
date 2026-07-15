@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/client';
+import { customersApi } from '../api/endpoints';
 import { useTranslation } from '../utils/translations';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -67,6 +68,19 @@ export default function Customers() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const handleDeleteCustomer = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete player "${name}"? This will permanently remove them from the Player Book.`)) {
+      return;
+    }
+    try {
+      await customersApi.remove(id);
+      setCustomers((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error(err);
+      setError('Could not delete customer.');
+    }
+  };
 
   // ── Derived stats ───────────────────────────────────────────────────────────
   const totalRevenue   = useMemo(() => customers.reduce((s, c) => s + (c.total_spent ?? 0), 0), [customers]);
@@ -203,7 +217,16 @@ export default function Customers() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={cardStyles.name}>{c.display_name}</div>
                       </div>
-                      <RankBadge rank={rank} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <RankBadge rank={rank} />
+                        <button
+                          style={styles.cardDeleteBtn}
+                          onClick={() => handleDeleteCustomer(c.id, c.display_name)}
+                          title="Delete player"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
                     </div>
 
                     <div style={cardStyles.revenueBlock}>
@@ -243,6 +266,7 @@ export default function Customers() {
                     <th style={tableStyles.th}>Sessions</th>
                     <th style={tableStyles.th}>Last Visit</th>
                     <th style={tableStyles.th}>Joined</th>
+                    <th style={{ ...tableStyles.th, textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -262,6 +286,15 @@ export default function Customers() {
                         </td>
                         <td style={tableStyles.td}>{relativeTime(c.last_visit)}</td>
                         <td style={tableStyles.td}>{new Date(c.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                        <td style={{ ...tableStyles.td, textAlign: 'right' }}>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={() => handleDeleteCustomer(c.id, c.display_name)}
+                            title="Delete player"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -331,6 +364,36 @@ const styles = {
   pageBtn: { background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 'var(--radius-sm)', color: 'var(--chalk-200)', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease', outline: 'none' },
   pageBtnDisabled: { opacity: 0.4, cursor: 'not-allowed' },
   pageInfo: { fontSize: '0.88rem', color: 'var(--chalk-400)', fontWeight: 500 },
+  deleteBtn: {
+    background: 'rgba(239, 68, 68, 0.15)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: 'var(--radius-sm)',
+    color: '#f87171',
+    width: 32,
+    height: 32,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    padding: 0,
+    outline: 'none',
+  },
+  cardDeleteBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--chalk-400)',
+    width: 28,
+    height: 28,
+    borderRadius: 'var(--radius-sm)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    padding: 0,
+    outline: 'none',
+  },
 };
 
 const gridStyles = {
@@ -400,3 +463,12 @@ const tableStyles = {
   tr: { borderBottom: '1px solid rgba(255, 255, 255, 0.05)', transition: 'background 0.15s' },
   td: { padding: '14px 18px', fontSize: '0.9rem', color: 'var(--chalk-200)', verticalAlign: 'middle' },
 };
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M4 7h16M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7m2 0-.7 12.1A2 2 0 0 1 14.3 21H9.7a2 2 0 0 1-2-1.9L7 7"
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

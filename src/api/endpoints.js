@@ -52,6 +52,7 @@ export const revenueApi = {
 
 export const customersApi = {
   list: () => api.get('/customers'),
+  remove: (id) => api.delete(`/customers/${id}`),
 };
 
 export const brandingApi = {
