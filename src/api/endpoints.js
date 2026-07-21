@@ -11,7 +11,8 @@ export const assetsApi = {
   update: (id, data) => api.put(`/assets/${id}`, data),
   archive: (id) => api.delete(`/assets/${id}`),
   activeSessions: () => api.get('/assets/active-sessions'),
-  startGame: (assetId, playerNames) => api.post(`/assets/${assetId}/start`, { player_names: playerNames }),
+  startGame: (assetId, playerNames, startTimeIso) =>
+    api.post(`/assets/${assetId}/start`, { player_names: playerNames, start_time: startTimeIso }),
   pauseGame: (assetId) => api.post(`/assets/${assetId}/pause`),
   resumeGame: (assetId) => api.post(`/assets/${assetId}/resume`),
   updatePlayers: (sessionId, playerNames) =>
@@ -20,11 +21,16 @@ export const assetsApi = {
 
 export const billingApi = {
   stop: (sessionId) => api.post(`/billing/${sessionId}/stop`),
+  cancelStop: (sessionId) => api.post(`/billing/${sessionId}/cancel-stop`),
   split: (sessionId, payerCustomerIds, payerNames) => api.post(`/billing/${sessionId}/split`, { payer_customer_ids: payerCustomerIds, payer_names: payerNames }),
   done: (sessionId, payerNames) => api.post(`/billing/${sessionId}/done`, { payer_names: payerNames }),
   records: () => api.get('/billing/records'),
-  markPaid: (sessionId, paymentMethod) =>
-    api.post(`/billing/${sessionId}/paid`, { payment_method: paymentMethod }),
+  markPaid: (sessionId, paymentMethodOrPayload) => {
+    const payload = typeof paymentMethodOrPayload === 'string'
+      ? { payment_method: paymentMethodOrPayload }
+      : paymentMethodOrPayload;
+    return api.post(`/billing/${sessionId}/paid`, payload);
+  },
   markUnpaid: (sessionId, paidAmount, pendingAmount) =>
     api.post(`/billing/${sessionId}/unpaid`, { paid_amount: paidAmount, pending_amount: pendingAmount }),
   detail: (sessionId) => api.get(`/billing/${sessionId}/detail`),
@@ -53,7 +59,12 @@ export const revenueApi = {
 
 export const customersApi = {
   list: () => api.get('/customers'),
+  create: (data) => api.post('/customers/create', data),
   remove: (id) => api.delete(`/customers/${id}`),
+  walletSummary: () => api.get('/customers/wallet/summary'),
+  addWalletMoney: (id, amount, paymentMethod, note) =>
+    api.post(`/customers/${id}/wallet/add`, { amount, payment_method: paymentMethod, note }),
+  walletHistory: (id) => api.get(`/customers/${id}/wallet/history`),
 };
 
 export const brandingApi = {

@@ -3,6 +3,7 @@ import { assetsApi } from '../api/endpoints';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import { getCategoryConfig } from '../utils/categoryAssets';
+import { useTranslation } from '../utils/translations';
 
 const CATEGORIES = ['Snooker', 'Pool', 'Heyball', 'PlayStation', 'Chess', 'Carrom'];
 
@@ -13,10 +14,12 @@ const CATEGORIES = ['Snooker', 'Pool', 'Heyball', 'PlayStation', 'Chess', 'Carro
   "Table 1", "Table 2", etc.
 */
 export default function TableSetup() {
+  const { t, lang } = useTranslation();
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [category, setCategory] = useState(CATEGORIES[0]);
+  const [customLabel, setCustomLabel] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -27,7 +30,7 @@ export default function TableSetup() {
     setLoading(true);
     assetsApi.list()
       .then((res) => setAssets(res.data))
-      .catch(() => setError('Could not load tables and devices.'))
+      .catch(() => setError(t('couldNotLoadTables')))
       .finally(() => setLoading(false));
   };
 
@@ -45,34 +48,39 @@ export default function TableSetup() {
     e.preventDefault();
     setError('');
     if (!hourlyRate || Number(hourlyRate) <= 0) {
-      setError('Enter an hourly rate greater than 0.');
+      setError(t('enterRateGreaterThanZero'));
       return;
     }
     setSubmitting(true);
     try {
-      await assetsApi.create({ category, hourly_rate: Number(hourlyRate) });
+      await assetsApi.create({
+        category,
+        label: customLabel.trim() || undefined,
+        hourly_rate: Number(hourlyRate),
+      });
       setShowAddModal(false);
+      setCustomLabel('');
       setHourlyRate('');
       loadAssets();
-      setToast('Table/device added');
+      setToast(t('tableDeviceAdded'));
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not add this item.');
+      setError(err.response?.data?.detail || t('couldNotAddItem'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id, label) => {
-    const confirmed = window.confirm(`Remove "${label}"? This cannot be undone.`);
+    const confirmed = window.confirm(`${t('removeConfirmed').replace('?', ` "${label}"?`)}`);
     if (!confirmed) return;
     
     setDeletingId(id);
     try {
       await assetsApi.archive(id);
       loadAssets();
-      setToast(`Removed ${label}`);
+      setToast(`${t('removedLabel')} ${label}`);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not remove this item.');
+      setError(err.response?.data?.detail || t('couldNotRemoveItem'));
     } finally {
       setDeletingId(null);
     }
@@ -91,7 +99,7 @@ export default function TableSetup() {
       await assetsApi.update(id, { sort_order: num });
       loadAssets();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not update order.');
+      setError(err.response?.data?.detail || t('couldNotUpdateOrder'));
     }
   };
 
@@ -103,18 +111,18 @@ export default function TableSetup() {
   return (
     <div>
       <div style={styles.headerRow}>
-        <h1 style={styles.pageTitle}>Table &amp; PlayStation Setup</h1>
+        <h1 style={styles.pageTitle}>{t('tablePlaystationSetup')}</h1>
         <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
-          + Add
+          + {t('add')}
         </button>
       </div>
 
-      {loading && <p style={{ color: 'var(--chalk-400)' }}>Loading…</p>}
+      {loading && <p style={{ color: 'var(--chalk-400)' }}>{t('loading')}</p>}
 
       {!loading && assets.length === 0 && (
         <Card style={{ textAlign: 'center', padding: 40 }}>
           <p style={{ color: 'var(--chalk-400)', margin: 0 }}>
-            No tables or devices yet. Add your first one to start tracking games.
+            {t('noTablesOrDevices')}
           </p>
         </Card>
       )}
@@ -149,17 +157,17 @@ export default function TableSetup() {
                       ...styles.assetStatusBadge,
                       ...statusBadgeStyle(item.status),
                     }}>
-                      {item.status === 'active' ? '● LIVE'
-                        : item.status === 'stopped' ? '◉ STOPPED'
-                        : '○ IDLE'}
+                      {item.status === 'active' ? `● ${t('live').toUpperCase()}`
+                        : item.status === 'stopped' ? `◉ ${t('stopped').toUpperCase()}`
+                        : `○ ${t('idle').toUpperCase()}`}
                     </div>
                   </div>
 
                   <div style={styles.assetBody}>
                     <div style={styles.assetLabel}>{item.label}</div>
-                    <div style={styles.assetRate}>₹{Number(item.hourly_rate).toFixed(0)} / hr</div>
+                    <div style={styles.assetRate}>₹{Number(item.hourly_rate).toFixed(0)} / {lang === 'hi' ? 'घंटा' : lang === 'pb' ? 'ਘੰਟਾ' : 'hr'}</div>
                     <div style={styles.sortOrderRow}>
-                      <span style={styles.sortOrderLabel}>Serial No:</span>
+                      <span style={styles.sortOrderLabel}>{t('serialNo')}:</span>
                       <input
                         type="number"
                         min="0"
@@ -195,9 +203,9 @@ export default function TableSetup() {
       })}
 
       {showAddModal && (
-        <Modal title="Add Table or Device" onClose={() => setShowAddModal(false)}>
+        <Modal title={t('addTableOrDevice')} onClose={() => setShowAddModal(false)}>
           <form onSubmit={handleAdd}>
-            <label style={styles.label}>Category</label>
+            <label style={styles.label}>{t('category')}</label>
             <select
               style={styles.input}
               value={category}
@@ -208,7 +216,18 @@ export default function TableSetup() {
               ))}
             </select>
 
-            <label style={styles.label}>Hourly rate (₹)</label>
+            <label style={styles.label}>
+              {lang === 'hi' ? 'टेबल / डिवाइस का नाम (वैकल्पिक)' : lang === 'pb' ? 'ਟੇਬਲ / ਡਿਵਾਈਸ ਦਾ ਨਾਮ (ਵਿਕਲਪਿਕ)' : 'Table or Device Name / Label (Optional)'}
+            </label>
+            <input
+              style={styles.input}
+              type="text"
+              placeholder={lang === 'hi' ? 'उदा. Star Table 1, VIP Snooker A' : lang === 'pb' ? 'ਉਦਾ. Star Table 1, VIP Snooker A' : 'e.g. Star Table 1, VIP Snooker A'}
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+            />
+
+            <label style={styles.label}>{t('hourlyRateRs')}</label>
             <input
               style={styles.input}
               type="number"
@@ -221,14 +240,14 @@ export default function TableSetup() {
 
             {hourlyRate > 0 && (
               <p style={styles.rateHint}>
-                That's ₹{(Number(hourlyRate) / 60).toFixed(2)} per minute.
+                {lang === 'hi' ? `यह ₹${(Number(hourlyRate) / 60).toFixed(2)} प्रति मिनट है।` : lang === 'pb' ? `ਇਹ ₹${(Number(hourlyRate) / 60).toFixed(2)} ਪ੍ਰਤੀ ਮਿੰਟ ਹੈ।` : `That's ₹${(Number(hourlyRate) / 60).toFixed(2)} per minute.`}
               </p>
             )}
 
             {error && <div style={styles.error}>{error}</div>}
 
             <button type="submit" style={styles.submitBtn} disabled={submitting}>
-              {submitting ? 'Adding…' : 'Add to floor'}
+              {submitting ? t('addingEllipsis') : t('addToFloor')}
             </button>
           </form>
         </Modal>

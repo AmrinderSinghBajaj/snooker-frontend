@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from '../utils/translations';
-import { billingApi } from '../api/endpoints';
+import { billingApi, customersApi } from '../api/endpoints';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import EditBillingModal from '../components/EditBillingModal';
@@ -15,13 +15,13 @@ import ManualEntryModal from '../components/ManualEntryModal';
     - Manual / edited rows carry a quiet badge so the owner always knows
        which records are system-tracked vs. hand-entered.
 */
-function getSaleTypeName(r) {
+function getSaleTypeName(r, t) {
   const hasTime = r.time_played_minutes > 0;
   const hasFood = r.food_amount > 0;
-  if (hasTime && hasFood) return 'Game & Food';
-  if (hasTime) return 'Game Only';
-  if (hasFood) return 'Cafe Sale';
-  return 'Game Only';
+  if (hasTime && hasFood) return t('gameAndFood');
+  if (hasTime) return t('gameOnly');
+  if (hasFood) return t('cafeSale');
+  return t('gameOnly');
 }
 
 function getSaleTypeStyle(r) {
@@ -63,7 +63,7 @@ function getSaleTypeStyle(r) {
 }
 
 export default function Billing() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -91,7 +91,7 @@ export default function Billing() {
     setLoading(true);
     billingApi.records()
       .then((res) => setRecords(res.data))
-      .catch(() => setError('Could not load billing records.'))
+      .catch(() => setError(t('couldNotLoadBilling')))
       .finally(() => setLoading(false));
   };
 
@@ -111,23 +111,27 @@ export default function Billing() {
       const res = await billingApi.detail(record.session_id);
       setDetail(res.data);
     } catch {
-      setError('Could not load details.');
+      setError(t('couldNotLoadDetails'));
     }
   };
 
-  const handleConfirmPaymentMethod = async (method) => {
+  const handleConfirmPaymentMethod = async (methodOrPayload) => {
     if (!paymentMethodPrompt) return;
     const { type, id, playerName, records } = paymentMethodPrompt;
     setPaymentMethodPrompt(null);
 
+    const payload = typeof methodOrPayload === 'string'
+      ? { payment_method: methodOrPayload }
+      : methodOrPayload;
+
     if (type === 'single') {
       setBusyId(id);
       try {
-        await billingApi.markPaid(id, method);
+        await billingApi.markPaid(id, payload);
         load();
-        setToast('Marked as paid');
-      } catch {
-        setError('Could not mark as paid.');
+        setToast(t('markedAsPaid'));
+      } catch (err) {
+        setError(err.response?.data?.detail || t('couldNotMarkPaid'));
       } finally {
         setBusyId(null);
       }
@@ -137,16 +141,16 @@ export default function Billing() {
         let successCount = 0;
         for (const record of records) {
           try {
-            await billingApi.markPaid(record.session_id, method);
+            await billingApi.markPaid(record.session_id, payload);
             successCount++;
           } catch (err) {
             console.error(`Failed to mark ${record.session_id} as paid:`, err);
           }
         }
         load();
-        setToast(`Marked ${successCount}/${records.length} records as paid`);
+        setToast(t('markedAllAsPaid').replace('records', `${successCount}/${records.length} records`));
       } catch (err) {
-        setError('Error marking records as paid');
+        setError(err.response?.data?.detail || t('errorMarkingPaid'));
       } finally {
         setBusyId(null);
       }
@@ -165,7 +169,7 @@ export default function Billing() {
     const paid = Number(paidAmount) || 0;
     const pending = Number(pendingAmount) || 0;
     if (Math.round((paid + pending) * 100) !== Math.round(unpaidSession.total_amount * 100)) {
-      setError(`Paid + Pending must equal ₹${unpaidSession.total_amount.toFixed(2)}.`);
+      setError(`${t('paidAmountMustEqualTotal')} (₹${unpaidSession.total_amount.toFixed(2)}).`);
       setBusyId(null);
       return;
     }
@@ -173,9 +177,9 @@ export default function Billing() {
       await billingApi.markUnpaid(unpaidSession.session_id, paid, pending);
       setUnpaidSession(null);
       load();
-      setToast('Balance recorded');
+      setToast(t('balanceRecorded'));
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not save.');
+      setError(err.response?.data?.detail || t('couldNotSave'));
     } finally {
       setBusyId(null);
     }
@@ -184,27 +188,27 @@ export default function Billing() {
   const handleEditSaved = () => {
     setEditRecord(null);
     load();
-    setToast('Entry updated');
+    setToast(t('entryUpdated'));
   };
 
   const handleManualSaved = () => {
     setShowManualEntry(false);
     load();
-    setToast('Entry added');
+    setToast(t('entryAdded'));
   };
 
   const handleDelete = async (record) => {
     const confirmed = window.confirm(
-      `Remove entry #${record.serial_number} (${record.player_names.join(', ')})? This can't be undone.`
+      `${t('removeConfirmed').replace('?', ` #${record.serial_number} (${record.player_names.join(', ')})?`)}`
     );
     if (!confirmed) return;
     setBusyId(record.session_id);
     try {
       await billingApi.remove(record.session_id);
       load();
-      setToast('Entry removed');
+      setToast(t('entryRemoved'));
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not remove this entry.');
+      setError(err.response?.data?.detail || t('couldNotRemoveEntry'));
     } finally {
       setBusyId(null);
     }
@@ -283,11 +287,11 @@ export default function Billing() {
     <div>
       <div style={styles.headerRow}>
         <div>
-          <h1 style={styles.pageTitle}>Billing Section</h1>
-          <p style={styles.subtitle}>Every settled and outstanding bill, in one place.</p>
+          <h1 style={styles.pageTitle}>{t('billingTitle')}</h1>
+          <p style={styles.subtitle}>{t('billingSubtitle')}</p>
         </div>
         <button className="billing-add-btn" style={styles.addBtn} onClick={() => setShowManualEntry(true)}>
-          <span style={styles.plusIcon}>+</span> Add entry
+          <span style={styles.plusIcon}>+</span> {t('addEntry')}
         </button>
       </div>
 
@@ -300,7 +304,7 @@ export default function Billing() {
           }}
           onClick={() => setActiveTab('all')}
         >
-          All Bills
+          {t('allBills')}
         </button>
         <button
           style={{
@@ -309,7 +313,7 @@ export default function Billing() {
           }}
           onClick={() => setActiveTab('outstanding')}
         >
-          Outstanding ({records.filter(r => r.payment_status === 'unpaid').length})
+          {t('outstandingTab')} ({records.filter(r => r.payment_status === 'unpaid').length})
         </button>
       </div>
 
@@ -318,13 +322,13 @@ export default function Billing() {
         <input
           style={styles.searchInput}
           type="text"
-          placeholder="Search by player name..."
+          placeholder={t('searchByPlayer')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         {searchQuery && (
           <button style={styles.clearSearchBtn} onClick={() => setSearchQuery('')}>
-            Clear
+            {t('cancel')}
           </button>
         )}
       </div>
@@ -334,15 +338,15 @@ export default function Billing() {
         <div style={styles.statsRow}>
           {activeTab === 'all' ? (
             <>
-              <StatPill label="Total billed" value={`₹${totals.total.toFixed(2)}`} accent="brass" />
-              <StatPill label="Outstanding" value={`₹${totals.pending.toFixed(2)}`} accent={totals.pending > 0 ? 'orange' : 'green'} />
-              <StatPill label="Records" value={String(records.length)} accent="neutral" />
+              <StatPill label={t('totalRevenue')} value={`₹${totals.total.toFixed(2)}`} accent="brass" />
+              <StatPill label={t('outstandingTab')} value={`₹${totals.pending.toFixed(2)}`} accent={totals.pending > 0 ? 'orange' : 'green'} />
+              <StatPill label={t('history')} value={String(records.length)} accent="neutral" />
             </>
           ) : (
             <>
-              <StatPill label="Total outstanding" value={`₹${outstandingTotals.total.toFixed(2)}`} accent="orange" />
-              <StatPill label="Unpaid records" value={String(outstandingTotals.count)} accent="neutral" />
-              <StatPill label="Users with pending" value={String(outstandingByPlayer.length)} accent="neutral" />
+              <StatPill label={t('totalRevenue')} value={`₹${outstandingTotals.total.toFixed(2)}`} accent="orange" />
+              <StatPill label={t('unpaid')} value={String(outstandingTotals.count)} accent="neutral" />
+              <StatPill label={t('players')} value={String(outstandingByPlayer.length)} accent="neutral" />
             </>
           )}
         </div>
@@ -354,8 +358,7 @@ export default function Billing() {
       {!loading && records.length === 0 && (
         <Card style={{ textAlign: 'center', padding: 48 }}>
           <p style={{ color: 'var(--chalk-400)', margin: 0 }}>
-            No bills yet. Records appear here automatically once a game is stopped and marked Done —
-            or add one by hand with <strong>Add entry</strong>.
+            {t('noBillingRecords')}
           </p>
         </Card>
       )}
@@ -366,13 +369,13 @@ export default function Billing() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>S.No.</th>
-                <th style={styles.th}>Player(s)</th>
-                <th style={styles.th}>Table</th>
-                <th style={styles.th}>Time played</th>
-                <th style={{ ...styles.th, textAlign: 'right' }}>Food</th>
-                <th style={{ ...styles.th, textAlign: 'right' }}>Total</th>
-                <th style={styles.th}>Status</th>
+                <th style={styles.th}>{t('serialNo')}</th>
+                <th style={styles.th}>{t('player')}</th>
+                <th style={styles.th}>{lang === 'hi' ? 'टेबल' : lang === 'pb' ? 'ਟੇਬਲ' : 'Table'}</th>
+                <th style={styles.th}>{t('timePlayed')}</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>{t('food')}</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>{t('total')}</th>
+                <th style={styles.th}>{t('status')}</th>
                 <th style={styles.th}></th>
               </tr>
             </thead>
@@ -394,7 +397,7 @@ export default function Billing() {
                       <span>{r.player_names.join(', ')}</span>
                       {(r.is_manual_entry || r.was_edited) && (
                         <span style={r.is_manual_entry ? styles.manualBadge : styles.editedBadge}>
-                          {r.is_manual_entry ? 'Manual' : 'Edited'}
+                          {r.is_manual_entry ? (lang === 'hi' ? 'मैन्युअल' : lang === 'pb' ? 'ਮੈਨੂਅਲ' : 'Manual') : (lang === 'hi' ? 'संपादित' : lang === 'pb' ? 'ਸੋਧਿਆ' : 'Edited')}
                         </span>
                       )}
                     </div>
@@ -402,10 +405,10 @@ export default function Billing() {
                   <td style={styles.td}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                       <span style={{ color: 'var(--chalk-200)' }}>{r.asset_label}</span>
-                      <span style={getSaleTypeStyle(r)}>{getSaleTypeName(r)}</span>
+                      <span style={getSaleTypeStyle(r)}>{getSaleTypeName(r, t)}</span>
                     </div>
                   </td>
-                  <td style={styles.tdMono}>{r.time_played_minutes} min</td>
+                  <td style={styles.tdMono}>{r.time_played_minutes} {lang === 'hi' ? 'मिनट' : lang === 'pb' ? 'ਮਿੰਟ' : 'min'}</td>
                   <td style={{ ...styles.tdMono, textAlign: 'right' }}>₹{r.food_amount.toFixed(2)}</td>
                   <td style={{ ...styles.tdMono, textAlign: 'right', fontWeight: 700, color: 'var(--chalk-100)' }}>
                     ₹{r.total_amount.toFixed(2)}
@@ -422,15 +425,15 @@ export default function Billing() {
                         }} />
                         {r.payment_status === 'paid' ? (
                           <span>
-                            Paid
+                            {t('paid')}
                             {r.payment_method && (
                               <span style={{ fontSize: '0.7rem', opacity: 0.8, marginLeft: 4, textTransform: 'capitalize' }}>
-                                • {r.payment_method}
+                                • {t(r.payment_method)}
                               </span>
                             )}
                           </span>
                         ) : (
-                          `₹${r.pending_amount.toFixed(0)} due`
+                          `₹${r.pending_amount.toFixed(0)} ${lang === 'hi' ? 'बकाया' : lang === 'pb' ? 'ਬਕਾਇਆ' : 'due'}`
                         )}
                       </span>
                     ) : (
@@ -445,10 +448,10 @@ export default function Billing() {
                           })}
                           disabled={busyId === r.session_id}
                         >
-                          Paid
+                          {t('paid')}
                         </button>
                         <button style={styles.unpaidBtn} onClick={() => openUnpaid(r)} disabled={busyId === r.session_id}>
-                          Unpaid
+                          {t('unpaid')}
                         </button>
                       </div>
                     )}
@@ -485,10 +488,10 @@ export default function Billing() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Customer Name</th>
-                <th style={styles.th}>Unpaid Records</th>
-                <th style={styles.th}>Latest Date</th>
-                <th style={{ ...styles.th, textAlign: 'right' }}>Total Outstanding</th>
+                <th style={styles.th}>{lang === 'hi' ? 'ग्राहक का नाम' : lang === 'pb' ? 'ਗਾਹਕ ਦਾ ਨਾਮ' : 'Customer Name'}</th>
+                <th style={styles.th}>{lang === 'hi' ? 'अवैतनिक रिकॉर्ड' : lang === 'pb' ? 'ਬਿਨਾਂ ਭੁਗਤਾਨ ਰਿਕਾਰਡ' : 'Unpaid Records'}</th>
+                <th style={styles.th}>{t('latestActivity')}</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>{lang === 'hi' ? 'कुल बकाया' : lang === 'pb' ? 'ਕੁੱਲ ਬਕਾਇਆ' : 'Total Outstanding'}</th>
                 <th style={styles.th}></th>
               </tr>
             </thead>
@@ -558,7 +561,7 @@ export default function Billing() {
       {!loading && records.length > 0 && activeTab === 'outstanding' && outstandingByPlayer.length === 0 && (
         <Card style={{ textAlign: 'center', padding: 48 }}>
           <p style={{ color: 'var(--chalk-400)', margin: 0 }}>
-            ✓ No outstanding bills! All customers have paid.
+            ✓ {lang === 'hi' ? 'कोई बकाया बिल नहीं! सभी ग्राहकों ने भुगतान कर दिया है।' : lang === 'pb' ? 'ਕੋਈ ਬਕਾਇਆ ਬਿੱਲ ਨਹੀਂ! ਸਾਰੇ ਗਾਹਕਾਂ ਨੇ ਭੁਗਤਾਨ ਕਰ ਦਿੱਤਾ ਹੈ।' : 'No outstanding bills! All customers have paid.'}
           </p>
         </Card>
       )}
@@ -609,9 +612,9 @@ export default function Billing() {
       )}
 
       {detailSession && (
-        <Modal title={`Detail — ${detailSession.asset_label}`} onClose={() => { setDetailSession(null); setDetail(null); }}>
+        <Modal title={`${t('viewDetail')} — ${detailSession.asset_label}`} onClose={() => { setDetailSession(null); setDetail(null); }}>
           {!detail ? (
-            <p style={{ color: 'var(--chalk-400)' }}>Loading…</p>
+            <p style={{ color: 'var(--chalk-400)' }}>{t('loading')}</p>
           ) : (
             <div>
               <p style={styles.detailLine}>
@@ -620,37 +623,45 @@ export default function Billing() {
               <p style={styles.detailLine}>
                 {new Date(detail.start_time).toLocaleString()} → {new Date(detail.stop_time).toLocaleString()}
               </p>
-              <p style={styles.detailLine}>Time charge: ₹{detail.time_amount.toFixed(2)}</p>
+              <p style={styles.detailLine}>{t('timeCharge')}: ₹{detail.time_amount.toFixed(2)}</p>
               {detail.food_lines.length > 0 && (
                 <>
-                  <p style={styles.detailLine}><strong>Food &amp; drink:</strong></p>
+                  <p style={styles.detailLine}><strong>{t('foodDrinkLabel')}:</strong></p>
                   <ul style={styles.foodList}>
                     {detail.food_lines.map((line, i) => (
-                      <li key={i}>{line.quantity} × {line.name} {line.ordered_by ? `(ordered by ${line.ordered_by})` : ''} — ₹{line.line_total.toFixed(2)}</li>
+                      <li key={i}>{line.quantity} × {line.name} {line.ordered_by ? `(${line.ordered_by})` : ''} — ₹{line.line_total.toFixed(2)}</li>
                     ))}
                   </ul>
                 </>
               )}
               <p style={{ ...styles.detailLine, fontWeight: 700, fontSize: '1.05rem' }}>
-                Total: ₹{detail.total_amount.toFixed(2)}
+                {t('total')}: ₹{detail.total_amount.toFixed(2)}
               </p>
+              {detail.payment_method && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--felt-600)', fontSize: '0.88rem', color: 'var(--chalk-200)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div><strong>Payment Mode:</strong> <span style={{ textTransform: 'capitalize' }}>{detail.payment_method}</span></div>
+                  {detail.wallet_paid_amount > 0 && <div>👛 Wallet Paid: ₹{detail.wallet_paid_amount.toFixed(2)}</div>}
+                  {detail.online_paid_amount > 0 && <div>📱 Online Paid: ₹{detail.online_paid_amount.toFixed(2)}</div>}
+                  {detail.offline_paid_amount > 0 && <div>💵 Cash Paid: ₹{detail.offline_paid_amount.toFixed(2)}</div>}
+                </div>
+              )}
             </div>
           )}
         </Modal>
       )}
 
       {unpaidSession && (
-        <Modal title="Record unpaid balance" onClose={() => setUnpaidSession(null)}>
+        <Modal title={t('unpaidBalance')} onClose={() => setUnpaidSession(null)}>
           <p style={styles.detailLine}>
-            Total due: <strong>₹{unpaidSession.total_amount.toFixed(2)}</strong>
+            {t('totalDue')} <strong>₹{unpaidSession.total_amount.toFixed(2)}</strong>
           </p>
-          <label style={styles.label}>Paid amount (₹)</label>
+          <label style={styles.label}>{t('paidAmountLabelEdit')}</label>
           <input style={styles.input} type="number" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} />
-          <label style={styles.label}>Pending amount (₹)</label>
+          <label style={styles.label}>{t('pendingAmountLabelEdit')}</label>
           <input style={styles.input} type="number" value={pendingAmount} onChange={(e) => setPendingAmount(e.target.value)} />
           {error && <div style={styles.errorBanner}>{error}</div>}
           <button style={styles.saveBtn} onClick={submitUnpaid} disabled={busyId === unpaidSession.session_id}>
-            {busyId === unpaidSession.session_id ? 'Saving…' : 'Save'}
+            {busyId === unpaidSession.session_id ? t('savingEllipsis') : t('saveChanges')}
           </button>
         </Modal>
       )}
@@ -664,102 +675,31 @@ export default function Billing() {
       )}
 
       {paymentMethodPrompt && (
-        <Modal
-          title="Select Payment Method"
+        <PaymentSettlementModal
+          prompt={paymentMethodPrompt}
           onClose={() => setPaymentMethodPrompt(null)}
-          width={400}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <p style={{ color: 'var(--chalk-200)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>
-              Confirming payment of <strong>₹{paymentMethodPrompt.amount.toFixed(2)}</strong> for{' '}
-              <strong>{paymentMethodPrompt.playerName}</strong>.
-              {paymentMethodPrompt.type === 'all' && ` This will mark all ${paymentMethodPrompt.records.length} outstanding records as paid.`}
-            </p>
-
-            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-              <button
-                style={{
-                  flex: 1,
-                  background: 'rgba(79, 70, 229, 0.15)',
-                  border: '2px solid #4F46E5',
-                  color: '#818CF8',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '16px 12px',
-                  fontWeight: 700,
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 6,
-                  transition: 'all 0.15s ease',
-                }}
-                onClick={() => handleConfirmPaymentMethod('online')}
-              >
-                <span style={{ fontSize: '1.25rem' }}>📱</span>
-                Online (UPI/GPay)
-              </button>
-
-              <button
-                style={{
-                  flex: 1,
-                  background: 'rgba(201, 162, 75, 0.15)',
-                  border: '2px solid var(--brass-500)',
-                  color: 'var(--brass-300)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '16px 12px',
-                  fontWeight: 700,
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 6,
-                  transition: 'all 0.15s ease',
-                }}
-                onClick={() => handleConfirmPaymentMethod('offline')}
-              >
-                <span style={{ fontSize: '1.25rem' }}>💵</span>
-                Offline (Cash)
-              </button>
-            </div>
-
-            <button
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--felt-500)',
-                color: 'var(--chalk-400)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '10px 0',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                marginTop: 8,
-              }}
-              onClick={() => setPaymentMethodPrompt(null)}
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+          onConfirm={handleConfirmPaymentMethod}
+          lang={lang}
+          t={t}
+        />
       )}
 
       {outstandingDetailPlayer && (
         <Modal
-          title={`Outstanding Balance — ${outstandingDetailPlayer.player_name}`}
+          title={`${t('unpaidBalance')} — ${outstandingDetailPlayer.player_name}`}
           onClose={() => setOutstandingDetailPlayer(null)}
           width={500}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--felt-600)', paddingBottom: 12 }}>
               <div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--chalk-400)' }}>Total Outstanding</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--chalk-400)' }}>{lang === 'hi' ? 'कुल बकाया' : lang === 'pb' ? 'ਕੁੱਲ ਬਕਾਇਆ' : 'Total Outstanding'}</span>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--orange-warn)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
                   ₹{outstandingDetailPlayer.total_outstanding.toFixed(2)}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--chalk-400)' }}>Unpaid Records</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--chalk-400)' }}>{lang === 'hi' ? 'अवैतनिक रिकॉर्ड' : lang === 'pb' ? 'ਬਿਨਾਂ ਭੁਗਤਾਨ ਰਿਕਾਰਡ' : 'Unpaid Records'}</span>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--chalk-100)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
                   {outstandingDetailPlayer.record_count}
                 </div>
@@ -780,12 +720,12 @@ export default function Billing() {
                         {new Date(rec.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} →{' '}
                         {new Date(rec.stop_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <span style={{ fontFamily: 'var(--font-mono)' }}>{minutes} min</span>
+                      <span style={{ fontFamily: 'var(--font-mono)' }}>{minutes} {lang === 'hi' ? 'मिनट' : lang === 'pb' ? 'ਮਿੰਟ' : 'min'}</span>
                     </div>
                     {(rec.food_amount > 0 || rec.time_played_minutes > 0) && (
                       <div style={{ display: 'flex', gap: 8, marginTop: 6, fontSize: '0.75rem', color: 'var(--chalk-300)' }}>
-                        {rec.time_played_minutes > 0 && <span>Game: ₹{(rec.total_amount - rec.food_amount).toFixed(0)}</span>}
-                        {rec.food_amount > 0 && <span>Food: ₹{rec.food_amount.toFixed(0)}</span>}
+                        {rec.time_played_minutes > 0 && <span>{lang === 'hi' ? 'खेल' : lang === 'pb' ? 'ਖੇਡ' : 'Game'}: ₹{(rec.total_amount - rec.food_amount).toFixed(0)}</span>}
+                        {rec.food_amount > 0 && <span>{t('food')}: ₹{rec.food_amount.toFixed(0)}</span>}
                       </div>
                     )}
                   </div>
@@ -817,7 +757,7 @@ export default function Billing() {
                   });
                 }}
               >
-                Mark All as Paid
+                {t('markAllPaid')}
               </button>
               <button
                 style={{
@@ -831,7 +771,7 @@ export default function Billing() {
                 }}
                 onClick={() => setOutstandingDetailPlayer(null)}
               >
-                Close
+                {t('close')}
               </button>
             </div>
           </div>
@@ -1232,3 +1172,323 @@ const styles = {
     fontWeight: 500,
   },
 };
+
+function PaymentSettlementModal({ prompt, onClose, onConfirm, lang, t }) {
+  const [customers, setCustomers] = useState([]);
+  const [mode, setMode] = useState('single');
+  const totalRequired = prompt.amount || 0;
+  const [amountReceived, setAmountReceived] = useState(String(totalRequired));
+  const [walletAmt, setWalletAmt] = useState('');
+  const [onlineAmt, setOnlineAmt] = useState('');
+  const [offlineAmt, setOfflineAmt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [modalErr, setModalErr] = useState('');
+
+  useEffect(() => {
+    customersApi.list()
+      .then((res) => setCustomers(res.data || []))
+      .catch((err) => console.error('Could not load customers', err));
+  }, []);
+
+  const customer = customers.find(c =>
+    (c.display_name || '').toLowerCase().trim() === (prompt.playerName || '').toLowerCase().trim()
+  );
+  const availableWallet = customer ? (customer.wallet_balance || 0) : 0;
+
+  const handleQuickPay = async (method) => {
+    setModalErr('');
+    const rec = Number(amountReceived);
+    if (isNaN(rec) || rec <= 0) {
+      setModalErr('Please enter a valid amount received.');
+      return;
+    }
+
+    if (method === 'wallet') {
+      if (!customer) {
+        setModalErr('No registered customer profile found for wallet payment.');
+        return;
+      }
+      if (availableWallet < rec) {
+        setModalErr(`Insufficient wallet balance (Available: ₹${availableWallet.toFixed(2)}).`);
+        return;
+      }
+    }
+    setSubmitting(true);
+    await onConfirm({
+      payment_method: method,
+      amount_received: rec,
+      wallet_amount: method === 'wallet' ? Math.min(rec, totalRequired) : 0,
+    });
+    setSubmitting(false);
+  };
+
+  const handleConfirmSplit = async () => {
+    setModalErr('');
+    const rec = Number(amountReceived);
+    if (isNaN(rec) || rec <= 0) {
+      setModalErr('Please enter a valid amount received.');
+      return;
+    }
+    const w = Number(walletAmt) || 0;
+    const o = Number(onlineAmt) || 0;
+    const off = Number(offlineAmt) || 0;
+    const effectivePaid = Math.min(rec, totalRequired);
+
+    if (Math.round((w + o + off) * 100) !== Math.round(effectivePaid * 100)) {
+      setModalErr(`Entered split amounts sum to ₹${(w + o + off).toFixed(2)}, which must equal paid amount ₹${effectivePaid.toFixed(2)}.`);
+      return;
+    }
+
+    if (w > 0) {
+      if (!customer) {
+        setModalErr('No registered customer profile found for wallet payment.');
+        return;
+      }
+      if (availableWallet < w) {
+        setModalErr(`Wallet amount ₹${w.toFixed(2)} exceeds available balance (₹${availableWallet.toFixed(2)}).`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    await onConfirm({
+      payment_method: 'split',
+      amount_received: rec,
+      wallet_amount: w,
+      online_amount: o,
+      offline_amount: off,
+    });
+    setSubmitting(false);
+  };
+
+  return (
+    <Modal title={t('selectPaymentMethod')} onClose={onClose} width={460}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ background: 'var(--felt-900)', padding: '14px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--felt-600)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ color: 'var(--chalk-200)', fontSize: '0.9rem', margin: 0 }}>
+              Bill Due: <strong>₹{totalRequired.toFixed(2)}</strong> for <strong>{prompt.playerName}</strong>
+            </p>
+            {customer && (
+              <div style={{ fontSize: '0.82rem', color: availableWallet > 0 ? 'var(--brass-300)' : 'var(--chalk-400)', fontWeight: 600 }}>
+                👛 Wallet: ₹{availableWallet.toFixed(2)}
+              </div>
+            )}
+          </div>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--chalk-400)', fontWeight: 600 }}>
+              Amount Received from Customer (₹)
+            </span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              style={{
+                background: 'var(--felt-800)',
+                border: '1px solid var(--brass-500)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--chalk-100)',
+                padding: '10px 12px',
+                fontSize: '1.05rem',
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 700,
+                outline: 'none',
+              }}
+              value={amountReceived}
+              onChange={(e) => setAmountReceived(e.target.value)}
+              placeholder="e.g. 200"
+            />
+          </label>
+
+          {(() => {
+            const rec = Number(amountReceived) || 0;
+            const diff = Math.round((rec - totalRequired) * 100) / 100;
+            if (rec > 0 && diff > 0) {
+              return (
+                <div style={{ background: 'rgba(201, 162, 75, 0.18)', border: '1px solid var(--brass-500)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--brass-300)', fontWeight: 600 }}>
+                  🎉 Overpayment of ₹{diff.toFixed(2)} will be credited to {prompt.playerName}'s Advance Wallet!
+                </div>
+              );
+            }
+            if (rec > 0 && diff < 0) {
+              return (
+                <div style={{ background: 'rgba(217, 123, 43, 0.18)', border: '1px solid var(--orange-warn)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--orange-warn)', fontWeight: 600 }}>
+                  ⚠️ Underpayment of ₹{Math.abs(diff).toFixed(2)} will remain as Outstanding Pending!
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: availableWallet >= 1 ? '1fr 1fr' : '1fr 1fr', gap: 10 }}>
+          <button
+            type="button"
+            style={{
+              background: 'rgba(79, 70, 229, 0.15)',
+              border: '2px solid #4F46E5',
+              color: '#818CF8',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 8px',
+              fontWeight: 700,
+              fontSize: '0.92rem',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onClick={() => handleQuickPay('online')}
+            disabled={submitting}
+          >
+            <span style={{ fontSize: '1.25rem' }}>📱</span>
+            {t('online')} (UPI)
+          </button>
+
+          <button
+            type="button"
+            style={{
+              background: 'rgba(201, 162, 75, 0.15)',
+              border: '2px solid var(--brass-500)',
+              color: 'var(--brass-300)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 8px',
+              fontWeight: 700,
+              fontSize: '0.92rem',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onClick={() => handleQuickPay('offline')}
+            disabled={submitting}
+          >
+            <span style={{ fontSize: '1.25rem' }}>💵</span>
+            {t('offline')} (Cash)
+          </button>
+
+          {availableWallet >= 1 && (
+            <>
+              <button
+                type="button"
+                style={{
+                  background: 'rgba(47, 158, 99, 0.15)',
+                  border: '2px solid var(--green-go)',
+                  color: 'var(--green-go)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '14px 8px',
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                onClick={() => handleQuickPay('wallet')}
+                disabled={submitting}
+              >
+                <span style={{ fontSize: '1.25rem' }}>👛</span>
+                {t('payWithWallet')}
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  background: mode === 'split' ? 'rgba(217, 123, 43, 0.25)' : 'rgba(217, 123, 43, 0.15)',
+                  border: '2px solid var(--orange-warn)',
+                  color: 'var(--orange-warn)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '14px 8px',
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                onClick={() => {
+                  setMode(mode === 'split' ? 'single' : 'split');
+                  if (availableWallet > 0) {
+                    const w = Math.min(availableWallet, totalRequired);
+                    setWalletAmt(String(w));
+                    setOnlineAmt(String(Math.round((totalRequired - w) * 100) / 100));
+                    setOfflineAmt('0');
+                  } else {
+                    setWalletAmt('0');
+                    setOnlineAmt(String(totalRequired));
+                    setOfflineAmt('0');
+                  }
+                }}
+              >
+                <span style={{ fontSize: '1.25rem' }}>🔀</span>
+                {t('splitPayment')}
+              </button>
+            </>
+          )}
+        </div>
+
+        {mode === 'split' && (
+          <div style={{ background: 'var(--felt-900)', padding: 14, borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--felt-600)' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--chalk-200)' }}>Split Breakdown:</div>
+            
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--chalk-300)' }}>
+              <span>👛 Wallet (Max ₹{availableWallet.toFixed(2)}):</span>
+              <input
+                type="number"
+                style={{ width: 100, background: 'var(--felt-800)', border: '1px solid var(--felt-500)', color: 'var(--chalk-100)', padding: '6px 8px', borderRadius: 4 }}
+                value={walletAmt}
+                onChange={(e) => setWalletAmt(e.target.value)}
+              />
+            </label>
+
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--chalk-300)' }}>
+              <span>📱 Online (UPI):</span>
+              <input
+                type="number"
+                style={{ width: 100, background: 'var(--felt-800)', border: '1px solid var(--felt-500)', color: 'var(--chalk-100)', padding: '6px 8px', borderRadius: 4 }}
+                value={onlineAmt}
+                onChange={(e) => setOnlineAmt(e.target.value)}
+              />
+            </label>
+
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--chalk-300)' }}>
+              <span>💵 Offline (Cash):</span>
+              <input
+                type="number"
+                style={{ width: 100, background: 'var(--felt-800)', border: '1px solid var(--felt-500)', color: 'var(--chalk-100)', padding: '6px 8px', borderRadius: 4 }}
+                value={offlineAmt}
+                onChange={(e) => setOfflineAmt(e.target.value)}
+              />
+            </label>
+
+            <button
+              type="button"
+              style={{ background: 'var(--brass-500)', color: 'var(--ink-900)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '10px 0', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', marginTop: 4 }}
+              onClick={handleConfirmSplit}
+              disabled={submitting}
+            >
+              Confirm Split Payment
+            </button>
+          </div>
+        )}
+
+        {modalErr && (
+          <div style={{ background: 'rgba(139, 38, 53, 0.2)', border: '1px solid var(--rail-600)', color: 'var(--rail-300)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+            {modalErr}
+          </div>
+        )}
+
+        <button
+          style={{ background: 'transparent', border: '1px solid var(--felt-500)', color: 'var(--chalk-400)', borderRadius: 'var(--radius-sm)', padding: '10px 0', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+          onClick={onClose}
+        >
+          {t('cancel')}
+        </button>
+      </div>
+    </Modal>
+  );
+}

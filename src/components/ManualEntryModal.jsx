@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { billingApi, customersApi } from '../api/endpoints';
+import { billingApi, customersApi, assetsApi } from '../api/endpoints';
+import { useTranslation } from '../utils/translations';
 
 /*
   For play that never went through the normal Start/Stop flow - a missed
@@ -8,6 +9,7 @@ import { billingApi, customersApi } from '../api/endpoints';
   Mirrors a real session's shape so it reads identically in the table once saved.
 */
 export default function ManualEntryModal({ onClose, onSaved }) {
+  const { t } = useTranslation();
   const now = new Date();
   const defaultStart = new Date(now.getTime() - 30 * 60000); // 30 min ago, sensible default
 
@@ -16,6 +18,8 @@ export default function ManualEntryModal({ onClose, onSaved }) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
+  const [assets, setAssets] = useState([]);
+  const [selectedAssetId, setSelectedAssetId] = useState('');
   const [assetLabel, setAssetLabel] = useState('');
   const [playerNamesText, setPlayerNamesText] = useState('');
   const [startTime, setStartTime] = useState(toLocalInput(defaultStart));
@@ -34,7 +38,78 @@ export default function ManualEntryModal({ onClose, onSaved }) {
     customersApi.list()
       .then((res) => setCustomers(res.data))
       .catch((err) => console.error('Could not load customers', err));
+
+    assetsApi.list()
+      .then((res) => {
+        const list = res.data || [];
+        setAssets(list);
+        if (list.length > 0) {
+          setSelectedAssetId(list[0].id);
+          setAssetLabel(list[0].label);
+          // Initial auto-calculate with default 30 min duration & first asset rate
+          const mins = 30;
+          const rate = Number(list[0].hourly_rate) || 0;
+          const initialCharge = Math.round((mins * (rate / 60)) * 100) / 100;
+          const initStr = String(initialCharge);
+          setTotalAmount(initStr);
+          setPendingAmount(initStr);
+        }
+      })
+      .catch((err) => console.error('Could not load assets', err));
   }, []);
+
+  const autoCalculateTotal = (newStart, newStop, newFood, currentAssetId = selectedAssetId) => {
+    if (!newStart || !newStop) return;
+    const startDt = new Date(newStart);
+    const stopDt = new Date(newStop);
+    if (isNaN(startDt.getTime()) || isNaN(stopDt.getTime()) || stopDt <= startDt) return;
+
+    const foundAsset = assets.find(a => a.id === currentAssetId);
+    if (!foundAsset || !foundAsset.hourly_rate) return;
+
+    const mins = Math.max(0, (stopDt - startDt) / 60000);
+    const hourlyRate = Number(foundAsset.hourly_rate);
+    const perMin = hourlyRate / 60;
+    const timeCharge = Math.round(mins * perMin * 100) / 100;
+    const foodVal = Number(newFood) || 0;
+    const computedTotal = Math.round((timeCharge + foodVal) * 100) / 100;
+
+    const totalStr = String(computedTotal);
+    setTotalAmount(totalStr);
+
+    if (paymentStatus === 'paid') {
+      setPaidAmount(totalStr);
+      setPendingAmount('0');
+    } else {
+      setPendingAmount(totalStr);
+      setPaidAmount('0');
+    }
+  };
+
+  const handleTableSelect = (e) => {
+    const id = e.target.value;
+    setSelectedAssetId(id);
+    const asset = assets.find(a => a.id === id);
+    if (asset) {
+      setAssetLabel(asset.label);
+      autoCalculateTotal(startTime, stopTime, foodAmount, id);
+    }
+  };
+
+  const handleStartTimeChange = (val) => {
+    setStartTime(val);
+    autoCalculateTotal(val, stopTime, foodAmount);
+  };
+
+  const handleStopTimeChange = (val) => {
+    setStopTime(val);
+    autoCalculateTotal(startTime, val, foodAmount);
+  };
+
+  const handleFoodAmountChange = (val) => {
+    setFoodAmount(val);
+    autoCalculateTotal(startTime, stopTime, val);
+  };
 
   const handleTotalChange = (value) => {
     setTotalAmount(value);
@@ -62,26 +137,26 @@ export default function ManualEntryModal({ onClose, onSaved }) {
     setError('');
     const names = playerNamesText.split(',').map((n) => n.trim()).filter(Boolean);
     if (names.length === 0) {
-      setError('Enter at least one player name.');
+      setError(t('enterAtLeastOnePlayer'));
       return;
     }
     if (!assetLabel.trim()) {
-      setError('Enter a table or label for this entry, e.g. "Table 2" or "Walk-in".');
+      setError(t('enterTableLabel'));
       return;
     }
     if (new Date(stopTime) <= new Date(startTime)) {
-      setError('End time must be after start time.');
+      setError(t('endTimeMustBeAfterStart'));
       return;
     }
     const total = Number(totalAmount);
     if (!total || total <= 0) {
-      setError('Enter a total amount greater than 0.');
+      setError(t('enterTotalGreaterThanZero'));
       return;
     }
     const paid = Number(paidAmount);
     const pending = Number(pendingAmount);
     if (Math.round((paid + pending) * 100) !== Math.round(total * 100)) {
-      setError(`Paid + Pending must equal the total (₹${total.toFixed(2)}).`);
+      setError(`${t('paidAmountMustEqualTotal')} (₹${total.toFixed(2)}).`);
       return;
     }
 
@@ -101,67 +176,81 @@ export default function ManualEntryModal({ onClose, onSaved }) {
       });
       onSaved();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not save this entry.');
+      setError(err.response?.data?.detail || t('couldNotSave'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal title="Add entry manually" onClose={onClose} width={480}>
+    <Modal title={t('addManualEntryTitle')} onClose={onClose} width={480}>
       <div style={styles.form}>
         <p style={styles.hint}>
-          For play that wasn't tracked on the dashboard — a missed entry, or a session settled outside the normal flow.
+          {t('addManual')}
         </p>
 
-        <Field label="Table / label">
-          <input
-            style={styles.input}
-            value={assetLabel}
-            onChange={(e) => setAssetLabel(e.target.value)}
-            placeholder="e.g. Table 2, or Walk-in"
-          />
+        <Field label={t('tableOrLabel')}>
+          {assets.length > 0 ? (
+            <select
+              style={styles.input}
+              value={selectedAssetId}
+              onChange={handleTableSelect}
+            >
+              {assets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label} (₹{a.hourly_rate}/hr)
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              style={styles.input}
+              value={assetLabel}
+              onChange={(e) => setAssetLabel(e.target.value)}
+              placeholder={t('tableOrLabelPlaceholder')}
+            />
+          )}
         </Field>
 
-        <Field label="Player name(s)">
+        <Field label={t('playerNamesLabel')}>
           <input
             style={styles.input}
             value={playerNamesText}
             onChange={(e) => setPlayerNamesText(e.target.value)}
-            placeholder="Comma-separated, e.g. Raj, Aman"
+            placeholder={t('playerNamesPlaceholder')}
             list="customer-suggestions"
           />
         </Field>
 
         <div style={styles.row2}>
-          <Field label="Start time">
+          <Field label={t('startTimeLabel')}>
             <input
               style={styles.input}
               type="datetime-local"
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              onChange={(e) => handleStartTimeChange(e.target.value)}
             />
           </Field>
-          <Field label="End time">
+          <Field label={t('stopTimeLabel')}>
             <input
               style={styles.input}
               type="datetime-local"
               value={stopTime}
-              onChange={(e) => setStopTime(e.target.value)}
+              onChange={(e) => handleStopTimeChange(e.target.value)}
             />
           </Field>
         </div>
 
         <div style={styles.row2}>
-          <Field label="Food & drink (₹)">
+          <Field label={t('foodAmountLabel')}>
             <input
               style={styles.input}
               type="number"
               value={foodAmount}
-              onChange={(e) => setFoodAmount(e.target.value)}
+              onChange={(e) => handleFoodAmountChange(e.target.value)}
             />
           </Field>
-          <Field label="Total amount (₹)">
+          <Field label={t('totalAmountLabel')}>
             <input
               style={styles.input}
               type="number"
@@ -172,41 +261,41 @@ export default function ManualEntryModal({ onClose, onSaved }) {
           </Field>
         </div>
 
-        <Field label="Payment status">
+        <Field label={t('paymentStatusLabel')}>
           <div style={styles.segmentRow}>
             <button
               type="button"
               style={{ ...styles.segmentBtn, ...(paymentStatus === 'paid' ? styles.segmentActivePaid : {}) }}
               onClick={() => handlePaymentChoice('paid')}
             >
-              Paid
+              {t('paid')}
             </button>
             <button
               type="button"
               style={{ ...styles.segmentBtn, ...(paymentStatus === 'unpaid' ? styles.segmentActiveUnpaid : {}) }}
               onClick={() => handlePaymentChoice('unpaid')}
             >
-              Unpaid
+              {t('unpaid')}
             </button>
           </div>
         </Field>
 
         {paymentStatus === 'paid' && (
-          <Field label="Payment method">
+          <Field label={t('paymentMethodLabel')}>
             <div style={styles.segmentRow}>
               <button
                 type="button"
                 style={{ ...styles.segmentBtn, ...(paymentMethod === 'online' ? styles.segmentActivePaid : {}) }}
                 onClick={() => setPaymentMethod('online')}
               >
-                📱 Online
+                📱 {t('online')}
               </button>
               <button
                 type="button"
                 style={{ ...styles.segmentBtn, ...(paymentMethod === 'offline' ? styles.segmentActivePaid : {}) }}
                 onClick={() => setPaymentMethod('offline')}
               >
-                💵 Offline
+                💵 {t('offline')}
               </button>
             </div>
           </Field>
@@ -214,7 +303,7 @@ export default function ManualEntryModal({ onClose, onSaved }) {
 
         {paymentStatus === 'unpaid' && (
           <div style={styles.row2}>
-            <Field label="Paid amount (₹)">
+            <Field label={t('paidAmountLabelEdit')}>
               <input
                 style={styles.input}
                 type="number"
@@ -222,7 +311,7 @@ export default function ManualEntryModal({ onClose, onSaved }) {
                 onChange={(e) => setPaidAmount(e.target.value)}
               />
             </Field>
-            <Field label="Pending amount (₹)">
+            <Field label={t('pendingAmountLabelEdit')}>
               <input
                 style={styles.input}
                 type="number"
@@ -242,7 +331,7 @@ export default function ManualEntryModal({ onClose, onSaved }) {
         </datalist>
 
         <button style={styles.saveBtn} onClick={handleSave} disabled={saving}>
-          {saving ? 'Adding…' : 'Add entry'}
+          {saving ? t('savingEllipsis') : t('addToBilling')}
         </button>
       </div>
     </Modal>
